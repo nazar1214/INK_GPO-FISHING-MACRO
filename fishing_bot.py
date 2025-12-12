@@ -26,7 +26,7 @@ COLOR_TOLERANCE = 25
 class ModernGPOBot:
     def __init__(self, root):
         self.root = root
-        self.root.title('GPO FISHING MACRO')
+        self.root.title('GPO FISH MACRO BOT')
         self.root.attributes('-topmost', True)
         self.root.protocol('WM_DELETE_WINDOW', self.exit_app)
         
@@ -80,7 +80,7 @@ class ModernGPOBot:
         self.setup_ui()
         self.register_hotkeys()
         self.root.update_idletasks()
-        self.root.minsize(440, 920)
+        self.root.minsize(440, 950)
 
     def get_dpi_scale(self):
         try: return self.root.winfo_fpixels('1i') / 96.0
@@ -115,7 +115,7 @@ class ModernGPOBot:
         # --- Header ---
         header_frame = ttk.Frame(scrollable_frame)
         header_frame.pack(fill='x', pady=(15, 15), padx=15)
-        ttk.Label(header_frame, text='INK_GPO FISH MACRO', style='Header.TLabel').pack(side='left')
+        ttk.Label(header_frame, text='INK_GPO MACRO', style='Header.TLabel').pack(side='left')
         self.status_indicator = tk.Label(header_frame, text="STOPPED", bg=self.colors['danger'], fg='white', font=('Segoe UI', 8, 'bold'), padx=8, pady=2)
         self.status_indicator.pack(side='right')
 
@@ -184,18 +184,25 @@ class ModernGPOBot:
         settings_grid = ttk.Frame(parent, style='Card.TFrame')
         settings_grid.pack(fill='x', pady=5)
 
+        # Loop Count
         ttk.Label(settings_grid, text="Craft Every:", style='Card.TLabel').grid(row=0, column=0, sticky='w')
-        self.craft_loop_var = tk.IntVar(value=10)
+        self.craft_loop_var = tk.IntVar(value=1) # Default 1 for speed
         tk.Spinbox(settings_grid, from_=1, to=9999, textvariable=self.craft_loop_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=1, padx=5)
         ttk.Label(settings_grid, text="Fish", style='Card.TLabel').grid(row=0, column=2, sticky='w', padx=(0, 15))
 
-        ttk.Label(settings_grid, text="Speed (s):", style='Card.TLabel').grid(row=0, column=3, sticky='w')
+        # Menu Open Delay
+        ttk.Label(settings_grid, text="Menu Delay (s):", style='Card.TLabel').grid(row=1, column=0, sticky='w')
+        self.craft_menu_delay_var = tk.DoubleVar(value=0.5)
+        tk.Spinbox(settings_grid, from_=0.1, to=5.0, increment=0.1, textvariable=self.craft_menu_delay_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=1, padx=5)
+
+        # Click Speed
+        ttk.Label(settings_grid, text="Click Speed (s):", style='Card.TLabel').grid(row=1, column=2, sticky='w')
         self.craft_speed_var = tk.DoubleVar(value=0.2)
-        tk.Spinbox(settings_grid, from_=0.01, to=2.0, increment=0.05, textvariable=self.craft_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=4, padx=5)
+        tk.Spinbox(settings_grid, from_=0.01, to=2.0, increment=0.05, textvariable=self.craft_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3, padx=5)
 
         self.craft_btns = {} 
         self.craft_btns['water'] = ttk.Button(settings_grid, text="Set Water Pt", command=lambda: self.capture_mouse_click('water', 'craft'))
-        self.craft_btns['water'].grid(row=1, column=0, columnspan=2, padx=0, pady=5, sticky='w')
+        self.craft_btns['water'].grid(row=2, column=0, columnspan=2, padx=0, pady=5, sticky='w')
 
         ttk.Separator(parent, orient='horizontal').pack(fill='x', pady=10)
 
@@ -262,6 +269,11 @@ class ModernGPOBot:
         self.non_rod_key_var = tk.StringVar(value="2")
         tk.Entry(grid, textvariable=self.non_rod_key_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3, padx=5)
 
+        # NEW: Fruit Storage Speed
+        ttk.Label(grid, text="Action Speed (s):", style='Card.TLabel').grid(row=2, column=0, sticky='w', pady=5)
+        self.fruit_speed_var = tk.DoubleVar(value=0.5)
+        tk.Spinbox(grid, from_=0.05, to=2.0, increment=0.05, textvariable=self.fruit_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=1, padx=5)
+
         # Buttons
         btn_grid = ttk.Frame(parent, style='Card.TFrame')
         btn_grid.pack(fill='x', pady=5)
@@ -276,19 +288,33 @@ class ModernGPOBot:
     def setup_mechanics_content(self, parent):
         grid = ttk.Frame(parent, style='Card.TFrame')
         grid.pack(fill='x')
+        
+        # PID Settings
         ttk.Label(grid, text="Kp (Strength):", style='Card.TLabel').grid(row=0, column=0, sticky='w', padx=5)
         self.kp_var = tk.DoubleVar(value=0.1)
         tk.Scale(grid, from_=0.0, to=2.0, resolution=0.01, variable=self.kp_var, orient='horizontal', bg=self.colors['panel'], fg='white', highlightthickness=0, length=100).grid(row=0, column=1)
+        
         ttk.Label(grid, text="Kd (Stability):", style='Card.TLabel').grid(row=1, column=0, sticky='w', padx=5)
         self.kd_var = tk.DoubleVar(value=0.5)
         tk.Scale(grid, from_=0.0, to=2.0, resolution=0.01, variable=self.kd_var, orient='horizontal', bg=self.colors['panel'], fg='white', highlightthickness=0, length=100).grid(row=1, column=1)
         
+        # Timers Column 1
         ttk.Label(grid, text="Rod Reset (s):", style='Card.TLabel').grid(row=0, column=2, sticky='w', padx=15)
         self.rod_reset_var = tk.DoubleVar(value=3.0)
         tk.Spinbox(grid, from_=0.0, to=10.0, increment=0.1, textvariable=self.rod_reset_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=3)
+        
         ttk.Label(grid, text="Timeout (s):", style='Card.TLabel').grid(row=1, column=2, sticky='w', padx=15)
         self.timeout_var = tk.DoubleVar(value=15.0)
         tk.Spinbox(grid, from_=1.0, to=120.0, increment=1.0, textvariable=self.timeout_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3)
+
+        # Speed Settings Column 2
+        ttk.Label(grid, text="Switch Delay (s):", style='Card.TLabel').grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        self.rod_switch_delay_var = tk.DoubleVar(value=0.2)
+        tk.Spinbox(grid, from_=0.05, to=2.0, increment=0.05, textvariable=self.rod_switch_delay_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=1, sticky='w')
+
+        ttk.Label(grid, text="Cast Hold (s):", style='Card.TLabel').grid(row=2, column=2, sticky='w', padx=15, pady=5)
+        self.cast_duration_var = tk.DoubleVar(value=1.0)
+        tk.Spinbox(grid, from_=0.1, to=5.0, increment=0.1, textvariable=self.cast_duration_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=3, sticky='w')
 
     def setup_hotkeys_content(self, parent):
         for i, (key_id, label_text) in enumerate([('toggle_loop', 'Start/Stop'), ('toggle_overlay', 'Overlay'), ('exit', 'Exit App')]):
@@ -486,14 +512,15 @@ class ModernGPOBot:
         try:
             rod = self.rod_key_var.get()
             not_rod = self.non_rod_key_var.get()
+            delay = self.rod_switch_delay_var.get()
             
             # Press Non-Rod key to clear state
             self.press_key(not_rod, 0.05)
-            time.sleep(0.2)
+            time.sleep(delay)
             
             # Press Rod key to equip
             self.press_key(rod, 0.05)
-            time.sleep(0.3)
+            time.sleep(delay + 0.1)
         except: pass
 
     def cast_line(self):
@@ -508,8 +535,9 @@ class ModernGPOBot:
             self.move_and_wiggle(self.craft_coords['water'])
             time.sleep(0.2)
         
+        hold_time = self.cast_duration_var.get()
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-        time.sleep(1.0)
+        time.sleep(hold_time)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         self.is_clicking = False
         print("Cast Complete.")
@@ -553,7 +581,8 @@ class ModernGPOBot:
             print("Main Craft Button position not set.")
             return
 
-        delay = self.craft_speed_var.get()
+        click_delay = self.craft_speed_var.get()
+        menu_delay = self.craft_menu_delay_var.get()
 
         try:
             craft_orders = [
@@ -563,8 +592,8 @@ class ModernGPOBot:
             ]
 
             print("Pressing E to open menu...")
-            self.press_key('e', duration=0.5)
-            time.sleep(self.interact_delay_var.get())
+            self.press_key('e', duration=0.1)
+            time.sleep(menu_delay) # Use custom Menu Delay
 
             for type_name, count in craft_orders:
                 if count <= 0: continue
@@ -577,17 +606,17 @@ class ModernGPOBot:
                 print(f"Crafting {count} {type_name}...")
                 
                 self.click_at(pos)
-                time.sleep(delay)
+                time.sleep(click_delay)
 
                 btn_pos = self.craft_coords['craft_btn']
                 for i in range(count):
                     self.click_at(btn_pos)
-                    time.sleep(delay)
+                    time.sleep(click_delay)
                 
-                time.sleep(delay)
+                time.sleep(click_delay)
 
-            self.press_key('e', duration=0.3)
-            time.sleep(1.0)
+            self.press_key('e', duration=0.1)
+            time.sleep(0.2) # Short wait after close
             
             self.needs_bait_reselect = True
             self.force_equip_rod()
@@ -600,22 +629,28 @@ class ModernGPOBot:
         print(f"🍎 Starting fruit storage check...")
         try:
             fruit_key = self.fruit_key_var.get()
+            not_rod = self.non_rod_key_var.get()
+            delay = self.fruit_speed_var.get()
             
+            # 0. SAFETY: Unequip Rod First (Press 2)
+            keyboard.press_and_release(not_rod)
+            time.sleep(delay)
+
             # 1. Equip Fruit Bag
             keyboard.press_and_release(fruit_key)
-            time.sleep(0.5)
+            time.sleep(delay)
             
             # 2. Click Fruit Slot
             if self.fruit_coords['fruit_slot']:
                 self.click_at(self.fruit_coords['fruit_slot'])
-                time.sleep(0.3)
+                time.sleep(delay)
             
             # 2.5 Wait for selection
-            time.sleep(1.0)
+            time.sleep(delay)
             
             # 3. Drop (Store)
             keyboard.press_and_release('backspace')
-            time.sleep(1.0)
+            time.sleep(delay)
             
             print(f"✅ Fruit stored.")
             
