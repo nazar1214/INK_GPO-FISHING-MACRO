@@ -491,16 +491,45 @@ class ModernGPOBot:
         except: pass
 
     def press_key(self, k, duration=0.3):
+        """Modified to use hardware Virtual Key codes for 'E' and numbers 
+           to bypass language layout issues."""
         try:
-            vk = win32api.VkKeyScan(k)
+            # Map common strings to their physical Virtual Key (VK) codes
+            vk_map = {
+                'e': 0x45,         # Hardware position for 'E'
+                'backspace': 0x08, # Hardware position for 'Backspace'
+            }
+            
+            k_str = str(k).lower()
+            
+            # Check hardcoded map first
+            if k_str in vk_map:
+                vk = vk_map[k_str]
+            # Check if it's a number (0-9 keys)
+            elif k_str.isdigit() and len(k_str) == 1:
+                vk = 0x30 + int(k_str) # 0x30 is key '0', 0x31 is '1', etc.
+            # Else try standard lookup
+            else:
+                vk = win32api.VkKeyScan(k)
+            
+            if vk == -1: 
+                raise ValueError("Key not found in layout")
+
+            # Get the scan code (what games usually check)
             scan = win32api.MapVirtualKey(vk & 0xFF, 0)
+            
+            # Press key
             win32api.keybd_event(vk, scan, 0, 0)
             time.sleep(duration)
+            # Release key
             win32api.keybd_event(vk, scan, win32con.KEYEVENTF_KEYUP, 0)
         except:
-            keyboard.press(k)
-            time.sleep(duration)
-            keyboard.release(k)
+            # Fallback for special symbols
+            try:
+                keyboard.press(k)
+                time.sleep(duration)
+                keyboard.release(k)
+            except: pass
 
     def type_text(self, text):
         for char in str(text):
@@ -514,11 +543,10 @@ class ModernGPOBot:
             not_rod = self.non_rod_key_var.get()
             delay = self.rod_switch_delay_var.get()
             
-            # Press Non-Rod key to clear state
+            # Use press_key to ensure language independence
             self.press_key(not_rod, 0.05)
             time.sleep(delay)
             
-            # Press Rod key to equip
             self.press_key(rod, 0.05)
             time.sleep(delay + 0.1)
         except: pass
@@ -625,19 +653,19 @@ class ModernGPOBot:
             print(f"Craft Error: {e}")
 
     def store_fruit(self):
-        """Fruit storage ONLY. No bait clicking here."""
-        print(f"🍎 Starting fruit storage check...")
+        """Fruit storage ONLY. Optimized for multi-language support."""
+        print(f"Starting fruit storage check...")
         try:
             fruit_key = self.fruit_key_var.get()
             not_rod = self.non_rod_key_var.get()
             delay = self.fruit_speed_var.get()
             
-            # 0. SAFETY: Unequip Rod First (Press 2)
-            keyboard.press_and_release(not_rod)
+            # 0. SAFETY: Unequip Rod First (e.g. Press 2)
+            self.press_key(not_rod, 0.05)
             time.sleep(delay)
 
-            # 1. Equip Fruit Bag
-            keyboard.press_and_release(fruit_key)
+            # 1. Equip Fruit Bag (e.g. Press 3)
+            self.press_key(fruit_key, 0.05)
             time.sleep(delay)
             
             # 2. Click Fruit Slot
@@ -648,11 +676,11 @@ class ModernGPOBot:
             # 2.5 Wait for selection
             time.sleep(delay)
             
-            # 3. Drop (Store)
-            keyboard.press_and_release('backspace')
+            # 3. Drop (Store) - Using language-safe Backspace
+            self.press_key('backspace', 0.05)
             time.sleep(delay)
             
-            print(f"✅ Fruit stored.")
+            print(f"Fruit stored.")
             
             # 4. FORCE RE-EQUIP ROD
             self.force_equip_rod()
@@ -661,7 +689,7 @@ class ModernGPOBot:
             self.needs_bait_reselect = True
             
         except Exception as e:
-            print(f"❌ Fruit storage failed: {e}")
+            print(f"Fruit storage failed: {e}")
 
     def select_bait(self):
         """Helper to click the bait slot."""
