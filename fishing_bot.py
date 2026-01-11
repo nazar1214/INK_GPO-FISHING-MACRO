@@ -4,7 +4,6 @@ import threading
 import time
 import sys
 import ctypes
-import math
 
 # Third-party imports
 import keyboard
@@ -18,15 +17,14 @@ from pynput import keyboard as pynput_keyboard
 # ==========================================
 # Constants
 # ==========================================
-COLOR_BAR_CONTAINER = (85, 170, 255)
-COLOR_SAFE_ZONE_BACKGROUND = (25, 25, 25)
-COLOR_MOVING_INDICATOR = (255, 255, 255)
-COLOR_TOLERANCE = 25
+COLOR_TARGET_BLUE = (255, 170, 85)   # #55aaff (BGR)
+COLOR_DARK = (25, 25, 25)            # #191919 (BGR)
+COLOR_WHITE = (255, 255, 255)        # #ffffff (BGR)
 
 class ModernGPOBot:
     def __init__(self, root):
         self.root = root
-        self.root.title('GPO FISH MACRO BOT')
+        self.root.title('INK_GPO FISHING BOT')
         self.root.attributes('-topmost', True)
         self.root.protocol('WM_DELETE_WINDOW', self.exit_app)
         
@@ -58,8 +56,8 @@ class ModernGPOBot:
         self.dpi_scale = self.get_dpi_scale()
         
         # Overlay Geometry
-        base_width = 250
-        base_height = 500
+        base_width = 172
+        base_height = 495
         self.overlay_area = {
             'x': int(100 * self.dpi_scale),
             'y': int(100 * self.dpi_scale),
@@ -70,7 +68,7 @@ class ModernGPOBot:
         self.previous_error = 0
         
         # Coordinates storage
-        self.point_coords = {1: None, 2: None, 3: None, 4: None}
+        self.point_coords = {1: None, 2: None, 3: None} 
         self.craft_coords = {'craft_btn': None, 'legendary': None, 'rare': None, 'common': None, 'water': None}
         self.fruit_coords = {'fruit_slot': None, 'bait_slot': None}
         
@@ -80,7 +78,7 @@ class ModernGPOBot:
         self.setup_ui()
         self.register_hotkeys()
         self.root.update_idletasks()
-        self.root.minsize(440, 950)
+        self.root.minsize(450, 950)
 
     def get_dpi_scale(self):
         try: return self.root.winfo_fpixels('1i') / 96.0
@@ -115,7 +113,7 @@ class ModernGPOBot:
         # --- Header ---
         header_frame = ttk.Frame(scrollable_frame)
         header_frame.pack(fill='x', pady=(15, 15), padx=15)
-        ttk.Label(header_frame, text='INK_GPO MACRO', style='Header.TLabel').pack(side='left')
+        ttk.Label(header_frame, text='INK_GPO FISHING BOT', style='Header.TLabel').pack(side='left')
         self.status_indicator = tk.Label(header_frame, text="STOPPED", bg=self.colors['danger'], fg='white', font=('Segoe UI', 8, 'bold'), padx=8, pady=2)
         self.status_indicator.pack(side='right')
 
@@ -145,7 +143,7 @@ class ModernGPOBot:
     # ================= UI SECTIONS =================
 
     def setup_auto_buy_content(self, parent):
-        self.auto_purchase_var = tk.BooleanVar(value=True)
+        self.auto_purchase_var = tk.BooleanVar(value=False) # Default False
         cb = tk.Checkbutton(parent, text="Enable Auto Buy", variable=self.auto_purchase_var,
                             bg=self.colors['panel'], fg=self.colors['fg'],
                             selectcolor=self.colors['bg'], activebackground=self.colors['panel'], activeforeground='white')
@@ -160,19 +158,26 @@ class ModernGPOBot:
         self.loops_var = tk.IntVar(value=15)
         tk.Spinbox(grid, from_=1, to=9999, textvariable=self.loops_var, width=8, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=3, pady=2)
         
-        ttk.Label(grid, text="Interact Delay (s):", style='Card.TLabel').grid(row=1, column=0, sticky='w', padx=5, pady=2)
-        self.interact_delay_var = tk.DoubleVar(value=2.0)
-        tk.Spinbox(grid, from_=0.1, to=10.0, increment=0.1, textvariable=self.interact_delay_var, width=8, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=1, pady=2)
+        # SPEED CONTROL
+        ttk.Label(grid, text="Action Delay (s):", style='Card.TLabel').grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        self.purchase_speed_var = tk.DoubleVar(value=0.5)
+        tk.Spinbox(grid, from_=0.1, to=5.0, increment=0.1, textvariable=self.purchase_speed_var, width=8, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=1, pady=2)
 
         btn_grid = ttk.Frame(parent, style='Card.TFrame')
         btn_grid.pack(fill='x', pady=5)
         self.point_buttons = {}
-        for i in range(1, 5):
+        
+        # Points 1, 2, 3
+        for i in range(1, 4):
             r, c = divmod(i-1, 2)
             btn = ttk.Button(btn_grid, text=f"Set Pt {i}", command=lambda x=i: self.capture_mouse_click(x, 'buy'))
             btn.grid(row=r, column=c, sticky='ew', padx=2, pady=2)
             btn_grid.columnconfigure(c, weight=1)
             self.point_buttons[i] = btn
+            
+        # UNIVERSAL WATER POINT
+        self.water_btn_buy = ttk.Button(btn_grid, text="Set Water Pt (Univ)", command=lambda: self.capture_mouse_click('water', 'craft'))
+        self.water_btn_buy.grid(row=1, column=1, sticky='ew', padx=2, pady=2)
 
     def setup_auto_craft_content(self, parent):
         self.auto_craft_var = tk.BooleanVar(value=False)
@@ -184,21 +189,19 @@ class ModernGPOBot:
         settings_grid = ttk.Frame(parent, style='Card.TFrame')
         settings_grid.pack(fill='x', pady=5)
 
-        # Loop Count
         ttk.Label(settings_grid, text="Craft Every:", style='Card.TLabel').grid(row=0, column=0, sticky='w')
-        self.craft_loop_var = tk.IntVar(value=1) # Default 1 for speed
+        self.craft_loop_var = tk.IntVar(value=1)
         tk.Spinbox(settings_grid, from_=1, to=9999, textvariable=self.craft_loop_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=1, padx=5)
         ttk.Label(settings_grid, text="Fish", style='Card.TLabel').grid(row=0, column=2, sticky='w', padx=(0, 15))
 
-        # Menu Open Delay
+        # UPDATED DEFAULTS: Menu Delay 0.1, Click Speed 0.01
         ttk.Label(settings_grid, text="Menu Delay (s):", style='Card.TLabel').grid(row=1, column=0, sticky='w')
-        self.craft_menu_delay_var = tk.DoubleVar(value=0.5)
+        self.craft_menu_delay_var = tk.DoubleVar(value=0.1)
         tk.Spinbox(settings_grid, from_=0.1, to=5.0, increment=0.1, textvariable=self.craft_menu_delay_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=1, padx=5)
 
-        # Click Speed
         ttk.Label(settings_grid, text="Click Speed (s):", style='Card.TLabel').grid(row=1, column=2, sticky='w')
-        self.craft_speed_var = tk.DoubleVar(value=0.2)
-        tk.Spinbox(settings_grid, from_=0.01, to=2.0, increment=0.05, textvariable=self.craft_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3, padx=5)
+        self.craft_speed_var = tk.DoubleVar(value=0.01)
+        tk.Spinbox(settings_grid, from_=0.01, to=2.0, increment=0.01, textvariable=self.craft_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3, padx=5)
 
         self.craft_btns = {} 
         self.craft_btns['water'] = ttk.Button(settings_grid, text="Set Water Pt", command=lambda: self.capture_mouse_click('water', 'craft'))
@@ -242,7 +245,7 @@ class ModernGPOBot:
 
         # --- Auto Bait ---
         self.auto_bait_var = tk.BooleanVar(value=False)
-        cb_bait = tk.Checkbutton(parent, text="Auto Select Bait", variable=self.auto_bait_var,
+        cb_bait = tk.Checkbutton(parent, text="Auto Select Bait (Universal)", variable=self.auto_bait_var,
                             bg=self.colors['panel'], fg=self.colors['fg'],
                             selectcolor=self.colors['bg'], activebackground=self.colors['panel'], activeforeground='white')
         cb_bait.pack(anchor='w', pady=(0, 5))
@@ -255,7 +258,6 @@ class ModernGPOBot:
         self.fruit_key_var = tk.StringVar(value="3")
         tk.Entry(grid, textvariable=self.fruit_key_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=1, padx=5, pady=2)
         
-        # Trigger logic
         ttk.Label(grid, text="Check Every:", style='Card.TLabel').grid(row=0, column=2, sticky='w', padx=10)
         self.fruit_check_loop_var = tk.IntVar(value=1)
         tk.Spinbox(grid, from_=1, to=999, textvariable=self.fruit_check_loop_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=3, padx=5)
@@ -269,9 +271,9 @@ class ModernGPOBot:
         self.non_rod_key_var = tk.StringVar(value="2")
         tk.Entry(grid, textvariable=self.non_rod_key_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3, padx=5)
 
-        # NEW: Fruit Storage Speed
+        # UPDATED DEFAULT: Action Speed 0.30
         ttk.Label(grid, text="Action Speed (s):", style='Card.TLabel').grid(row=2, column=0, sticky='w', pady=5)
-        self.fruit_speed_var = tk.DoubleVar(value=0.5)
+        self.fruit_speed_var = tk.DoubleVar(value=0.30)
         tk.Spinbox(grid, from_=0.05, to=2.0, increment=0.05, textvariable=self.fruit_speed_var, width=5, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=1, padx=5)
 
         # Buttons
@@ -291,30 +293,37 @@ class ModernGPOBot:
         
         # PID Settings
         ttk.Label(grid, text="Kp (Strength):", style='Card.TLabel').grid(row=0, column=0, sticky='w', padx=5)
-        self.kp_var = tk.DoubleVar(value=0.1)
+        self.kp_var = tk.DoubleVar(value=0.10)
         tk.Scale(grid, from_=0.0, to=2.0, resolution=0.01, variable=self.kp_var, orient='horizontal', bg=self.colors['panel'], fg='white', highlightthickness=0, length=100).grid(row=0, column=1)
         
         ttk.Label(grid, text="Kd (Stability):", style='Card.TLabel').grid(row=1, column=0, sticky='w', padx=5)
-        self.kd_var = tk.DoubleVar(value=0.5)
+        self.kd_var = tk.DoubleVar(value=0.50)
         tk.Scale(grid, from_=0.0, to=2.0, resolution=0.01, variable=self.kd_var, orient='horizontal', bg=self.colors['panel'], fg='white', highlightthickness=0, length=100).grid(row=1, column=1)
         
-        # Timers Column 1
+        # UPDATED DEFAULTS: Rod Reset 0, Timeout 10
         ttk.Label(grid, text="Rod Reset (s):", style='Card.TLabel').grid(row=0, column=2, sticky='w', padx=15)
-        self.rod_reset_var = tk.DoubleVar(value=3.0)
+        self.rod_reset_var = tk.DoubleVar(value=0.0)
         tk.Spinbox(grid, from_=0.0, to=10.0, increment=0.1, textvariable=self.rod_reset_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=0, column=3)
         
         ttk.Label(grid, text="Timeout (s):", style='Card.TLabel').grid(row=1, column=2, sticky='w', padx=15)
-        self.timeout_var = tk.DoubleVar(value=15.0)
+        self.timeout_var = tk.DoubleVar(value=10.0)
         tk.Spinbox(grid, from_=1.0, to=120.0, increment=1.0, textvariable=self.timeout_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=1, column=3)
 
-        # Speed Settings Column 2
+        # UPDATED DEFAULTS: Switch Delay 0.1, Cast Hold 0.1
         ttk.Label(grid, text="Switch Delay (s):", style='Card.TLabel').grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        self.rod_switch_delay_var = tk.DoubleVar(value=0.2)
+        self.rod_switch_delay_var = tk.DoubleVar(value=0.10)
         tk.Spinbox(grid, from_=0.05, to=2.0, increment=0.05, textvariable=self.rod_switch_delay_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=1, sticky='w')
 
         ttk.Label(grid, text="Cast Hold (s):", style='Card.TLabel').grid(row=2, column=2, sticky='w', padx=15, pady=5)
-        self.cast_duration_var = tk.DoubleVar(value=1.0)
+        self.cast_duration_var = tk.DoubleVar(value=0.1)
         tk.Spinbox(grid, from_=0.1, to=5.0, increment=0.1, textvariable=self.cast_duration_var, width=6, bg=self.colors['bg'], fg='white', relief='flat').grid(row=2, column=3, sticky='w')
+
+        # === NEW TOGGLE FOR ROD SWITCHING ===
+        self.always_rod_var = tk.BooleanVar(value=False)
+        cb_rod = tk.Checkbutton(parent, text="Always Rod Mode (No Switching)", variable=self.always_rod_var,
+                            bg=self.colors['panel'], fg=self.colors['fg'],
+                            selectcolor=self.colors['bg'], activebackground=self.colors['panel'], activeforeground='white')
+        cb_rod.pack(anchor='w', pady=(5, 0))
 
     def setup_hotkeys_content(self, parent):
         for i, (key_id, label_text) in enumerate([('toggle_loop', 'Start/Stop'), ('toggle_overlay', 'Overlay'), ('exit', 'Exit App')]):
@@ -329,7 +338,6 @@ class ModernGPOBot:
 
     def capture_mouse_click(self, key_id, mode):
         self.msg_label.config(text=f"Click to set {key_id}...", foreground=self.colors['accent'])
-        
         def on_click(x, y, button, pressed):
             if pressed:
                 if mode == 'buy':
@@ -354,6 +362,10 @@ class ModernGPOBot:
             if key in ['legendary', 'rare', 'common']: txt = "Pos Set"
             if key == 'water': txt = "Water Set"
             self.craft_btns[key].config(text=txt, style='Accent.TButton')
+        
+        if key == 'water' and hasattr(self, 'water_btn_buy'):
+            self.water_btn_buy.config(text="Water Set", style='Accent.TButton')
+            
         self.msg_label.config(text=f"Craft Point {key} set.", foreground=self.colors['success'])
 
     def finish_capture_fruit(self, key):
@@ -468,12 +480,10 @@ class ModernGPOBot:
             x, y = int(coords[0]), int(coords[1])
             win32api.SetCursorPos((x, y))
             time.sleep(0.05)
-            # Wiggle
             win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, 1, 1, 0, 0)
             time.sleep(0.02)
             win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, -1, -1, 0, 0)
             time.sleep(0.02)
-            # Click
             win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
             time.sleep(0.1)
             win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
@@ -491,45 +501,16 @@ class ModernGPOBot:
         except: pass
 
     def press_key(self, k, duration=0.3):
-        """Modified to use hardware Virtual Key codes for 'E' and numbers 
-           to bypass language layout issues."""
         try:
-            # Map common strings to their physical Virtual Key (VK) codes
-            vk_map = {
-                'e': 0x45,         # Hardware position for 'E'
-                'backspace': 0x08, # Hardware position for 'Backspace'
-            }
-            
-            k_str = str(k).lower()
-            
-            # Check hardcoded map first
-            if k_str in vk_map:
-                vk = vk_map[k_str]
-            # Check if it's a number (0-9 keys)
-            elif k_str.isdigit() and len(k_str) == 1:
-                vk = 0x30 + int(k_str) # 0x30 is key '0', 0x31 is '1', etc.
-            # Else try standard lookup
-            else:
-                vk = win32api.VkKeyScan(k)
-            
-            if vk == -1: 
-                raise ValueError("Key not found in layout")
-
-            # Get the scan code (what games usually check)
+            vk = win32api.VkKeyScan(k)
             scan = win32api.MapVirtualKey(vk & 0xFF, 0)
-            
-            # Press key
             win32api.keybd_event(vk, scan, 0, 0)
             time.sleep(duration)
-            # Release key
             win32api.keybd_event(vk, scan, win32con.KEYEVENTF_KEYUP, 0)
         except:
-            # Fallback for special symbols
-            try:
-                keyboard.press(k)
-                time.sleep(duration)
-                keyboard.release(k)
-            except: pass
+            keyboard.press(k)
+            time.sleep(duration)
+            keyboard.release(k)
 
     def type_text(self, text):
         for char in str(text):
@@ -537,28 +518,31 @@ class ModernGPOBot:
             time.sleep(0.02)
 
     def force_equip_rod(self):
-        """Safely equips rod by switching to non-rod slot first"""
         try:
             rod = self.rod_key_var.get()
-            not_rod = self.non_rod_key_var.get()
-            delay = self.rod_switch_delay_var.get()
             
-            # Use press_key to ensure language independence
-            self.press_key(not_rod, 0.05)
-            time.sleep(delay)
-            
-            self.press_key(rod, 0.05)
-            time.sleep(delay + 0.1)
+            # --- MODIFIED LOGIC: TOGGLEABLE SWITCHING ---
+            if self.always_rod_var.get():
+                # Just press rod key to ensure equipped, no switching
+                self.press_key(rod, 0.05)
+            else:
+                # Classic Switching
+                not_rod = self.non_rod_key_var.get()
+                delay = self.rod_switch_delay_var.get()
+                self.press_key(not_rod, 0.05)
+                time.sleep(delay)
+                self.press_key(rod, 0.05)
+                time.sleep(delay + 0.1)
         except: pass
 
     def cast_line(self):
         print("Casting Phase...")
-        
         if self.auto_bait_var.get() and self.needs_bait_reselect:
             print("Auto selecting bait...")
             self.select_bait()
             self.needs_bait_reselect = False 
-
+        
+        # UNIVERSAL WATER POINT
         if self.craft_coords['water']:
             self.move_and_wiggle(self.craft_coords['water'])
             time.sleep(0.2)
@@ -568,131 +552,118 @@ class ModernGPOBot:
         time.sleep(hold_time)
         win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
         self.is_clicking = False
-        print("Cast Complete.")
 
     def run_auto_purchase(self):
-        print("Starting Auto Purchase...")
+        print("Starting Auto Purchase (Asphalt Logic)...")
         pts = self.point_coords
-        if not all([pts[1], pts[2], pts[3], pts[4]]):
-            print("Buy Points not set!")
+        water_pt = self.craft_coords['water']
+        
+        # Check Points
+        if not all([pts[1], pts[2], pts[3], water_pt]): 
+            print("ERROR: Missing points for auto purchase.")
+            print(f"Pt1: {pts[1]}, Pt2: {pts[2]}, Pt3: {pts[3]}, Water: {water_pt}")
             return
-        try:
-            print("Pressing E...")
-            self.press_key('e', duration=0.5)
-            time.sleep(self.interact_delay_var.get())
-            
-            self.click_at(pts[1])
-            time.sleep(0.5)
-            self.click_at(pts[2])
-            time.sleep(0.5)
-            self.type_text(self.amount_var.get())
-            time.sleep(0.5)
-            self.click_at(pts[1])
-            time.sleep(0.5)
-            self.click_at(pts[3])
-            time.sleep(0.5)
-            self.click_at(pts[2])
-            time.sleep(0.5)
-            
-            self.move_and_wiggle(pts[4])
-            time.sleep(1.0)
-            
-            self.needs_bait_reselect = True
-            self.force_equip_rod()
 
-        except Exception as e:
-            print(f"Purchase Error: {e}")
+        delay = self.purchase_speed_var.get()
+
+        # 1. Open Menu
+        self.press_key('e', duration=0.1)
+        time.sleep(delay)
+        
+        # 2. Click Pt 1
+        self.click_at(pts[1])
+        time.sleep(delay)
+        
+        # 3. Click Pt 2
+        self.click_at(pts[2])
+        time.sleep(delay)
+        
+        # 4. Type Amount
+        self.type_text(self.amount_var.get())
+        time.sleep(delay)
+        
+        # 5. Click Pt 1
+        self.click_at(pts[1])
+        time.sleep(delay)
+        
+        # 6. Click Pt 3
+        self.click_at(pts[3])
+        time.sleep(delay)
+        
+        # 7. Click Pt 2
+        self.click_at(pts[2])
+        time.sleep(delay)
+        
+        # 8. Move to Water Point (Universal)
+        self.move_and_wiggle(water_pt)
+        time.sleep(delay)
+
+        self.needs_bait_reselect = True
+
+        # --- MODIFICATION: RESET ROD STATE ---
+        # Add another rod key press to "toggle out" the rod before final equip
+        rod_key = self.rod_key_var.get()
+        self.press_key(rod_key, 0.1)
+        time.sleep(0.3) 
+        # --------------------------------------
+
+        self.force_equip_rod()
 
     def run_auto_craft(self):
         print("Starting Auto Craft...")
-        if not self.craft_coords['craft_btn']:
-            print("Main Craft Button position not set.")
-            return
-
+        if not self.craft_coords['craft_btn']: return
         click_delay = self.craft_speed_var.get()
         menu_delay = self.craft_menu_delay_var.get()
-
         try:
             craft_orders = [
                 ('legendary', self.legendary_count.get()),
                 ('rare', self.rare_count.get()),
                 ('common', self.common_count.get())
             ]
-
-            print("Pressing E to open menu...")
             self.press_key('e', duration=0.1)
-            time.sleep(menu_delay) # Use custom Menu Delay
-
+            time.sleep(menu_delay)
             for type_name, count in craft_orders:
                 if count <= 0: continue
-                
                 pos = self.craft_coords[type_name]
-                if not pos:
-                    print(f"Position for {type_name} not set! Skipping.")
-                    continue
-
-                print(f"Crafting {count} {type_name}...")
-                
+                if not pos: continue
                 self.click_at(pos)
                 time.sleep(click_delay)
-
                 btn_pos = self.craft_coords['craft_btn']
                 for i in range(count):
                     self.click_at(btn_pos)
                     time.sleep(click_delay)
-                
                 time.sleep(click_delay)
-
             self.press_key('e', duration=0.1)
-            time.sleep(0.2) # Short wait after close
-            
+            time.sleep(0.2)
             self.needs_bait_reselect = True
             self.force_equip_rod()
-
-        except Exception as e:
-            print(f"Craft Error: {e}")
+        except: pass
 
     def store_fruit(self):
-        """Fruit storage ONLY. Optimized for multi-language support."""
-        print(f"Starting fruit storage check...")
+        print(f"Stored Fruit.")
         try:
             fruit_key = self.fruit_key_var.get()
             not_rod = self.non_rod_key_var.get()
             delay = self.fruit_speed_var.get()
             
-            # 0. SAFETY: Unequip Rod First (e.g. Press 2)
-            self.press_key(not_rod, 0.05)
+            # Switch Logic inside Store Fruit
+            if not self.always_rod_var.get():
+                keyboard.press_and_release(not_rod)
+                time.sleep(delay)
+                
+            keyboard.press_and_release(fruit_key)
             time.sleep(delay)
-
-            # 1. Equip Fruit Bag (e.g. Press 3)
-            self.press_key(fruit_key, 0.05)
-            time.sleep(delay)
-            
-            # 2. Click Fruit Slot
             if self.fruit_coords['fruit_slot']:
                 self.click_at(self.fruit_coords['fruit_slot'])
                 time.sleep(delay)
-            
-            # 2.5 Wait for selection
             time.sleep(delay)
-            
-            # 3. Drop (Store) - Using language-safe Backspace
-            self.press_key('backspace', 0.05)
+            keyboard.press_and_release('backspace')
             time.sleep(delay)
-            
-            print(f"Fruit stored.")
-            
-            # 4. FORCE RE-EQUIP ROD
             self.force_equip_rod()
-            
-            # 5. Flag bait for reselection
             self.needs_bait_reselect = True
-            
-        except Exception as e:
-            print(f"Fruit storage failed: {e}")
+        except: pass
 
     def select_bait(self):
-        """Helper to click the bait slot."""
         if self.fruit_coords['bait_slot']:
             self.click_at(self.fruit_coords['bait_slot'])
             time.sleep(0.5)
@@ -702,213 +673,215 @@ class ModernGPOBot:
     def toggle_main_loop(self):
         self.main_loop_active = not self.main_loop_active
         if self.main_loop_active:
-            # Check setup
+            # Check for coordinates before starting
             if self.auto_purchase_var.get():
-                if not all(self.point_coords.values()):
-                    messagebox.showwarning("Setup", "Please set all 4 Buy points.")
+                if not all([self.point_coords[1], self.point_coords[2], self.point_coords[3], self.craft_coords['water']]):
+                    messagebox.showwarning("Setup", "Set Pts 1-3 AND Water Pt for Auto Buy!")
                     self.main_loop_active = False
                     return
             
-            if self.auto_craft_var.get():
-                if not self.craft_coords['craft_btn']:
-                    messagebox.showwarning("Setup", "Please set Main Craft Button.")
-                    self.main_loop_active = False
-                    return
-                    
-            if self.fruit_storage_var.get():
-                if not self.fruit_coords['fruit_slot']:
-                    messagebox.showwarning("Setup", "Please set Fruit Point for storage.")
-                    self.main_loop_active = False
-                    return
+            if self.auto_craft_var.get() and not self.craft_coords['craft_btn']:
+                messagebox.showwarning("Setup", "Set Main Craft Button!")
+                self.main_loop_active = False
+                return
             
-            if self.auto_bait_var.get():
-                if not self.fruit_coords['bait_slot']:
-                     messagebox.showwarning("Setup", "Please set Bait Point for auto select.")
-                     self.main_loop_active = False
-                     return
-            
-            # Reset bait flag on start
             self.needs_bait_reselect = True
-            
             self.status_indicator.config(text="RUNNING", bg=self.colors['success'])
             threading.Thread(target=self.worker, daemon=True).start()
         else:
             self.status_indicator.config(text="STOPPED", bg=self.colors['danger'])
+            if self.is_clicking:
+                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
+                self.is_clicking = False
+
+    def perform_post_fish_tasks(self):
+        """Runs the checklist of tasks (Fruit/Buy/Craft)"""
+        self.fish_catch_counter += 1
+        
+        # 1. Fruit Storage
+        if self.fruit_storage_var.get():
+            if self.fish_catch_counter % self.fruit_check_loop_var.get() == 0:
+                self.store_fruit()
+        
+        # 2. Auto Buy
+        if self.auto_purchase_var.get():
+            self.purchase_counter += 1
+            if self.purchase_counter >= self.loops_var.get():
+                self.run_auto_purchase()
+                self.purchase_counter = 0
+
+        # 3. Auto Craft
+        if self.auto_craft_var.get():
+            self.craft_counter += 1
+            if self.craft_counter >= self.craft_loop_var.get():
+                self.run_auto_craft()
+                self.craft_counter = 0
 
     def worker(self):
         sct = mss.mss()
         time.sleep(1.0)
         
-        # Initial Runs
+        # --- RUN ON START CHECK ---
+        # Run Auto Purchase immediately if enabled, INDEPENDENT of other toggles
         if self.auto_purchase_var.get():
+            print("Performing initial purchase on start...")
             self.run_auto_purchase()
-        
-        if self.auto_craft_var.get():
-            self.run_auto_craft()
+            self.purchase_counter = 0
 
+        # Initial Cast
         self.cast_line()
         time.sleep(self.rod_reset_var.get())
 
         last_detection_time = time.time()
         was_detecting = False
         
-        last_known_white_y = 0
-        white_bar_lost_time = 0
-
         while self.main_loop_active:
             try:
+                # 1. Capture Screen
                 monitor = {
                     'left': self.overlay_area['x'], 'top': self.overlay_area['y'],
                     'width': self.overlay_area['width'], 'height': self.overlay_area['height']
                 }
-                
                 img = np.array(sct.grab(monitor))
 
-                # 1. Find Blue Bar (Container)
+                # 2. Find Blue Bar (Target Container)
                 blue_mask = (
-                    (np.abs(img[:,:,2] - COLOR_BAR_CONTAINER[0]) < COLOR_TOLERANCE) &
-                    (np.abs(img[:,:,1] - COLOR_BAR_CONTAINER[1]) < COLOR_TOLERANCE) &
-                    (np.abs(img[:,:,0] - COLOR_BAR_CONTAINER[2]) < COLOR_TOLERANCE)
+                    (img[:,:,2] == COLOR_TARGET_BLUE[2]) & # R
+                    (img[:,:,1] == COLOR_TARGET_BLUE[1]) & # G
+                    (img[:,:,0] == COLOR_TARGET_BLUE[0])   # B
                 )
-
-                col_counts = np.sum(blue_mask, axis=0)
-                valid_cols = np.where(col_counts > 100)[0]
-
-                if valid_cols.size == 0:
-                    # --- No Blue Bar Found ---
-                    if was_detecting and (time.time() - last_detection_time > 1.0):
-                        print("Bar lost completely. Cycle finished.")
+                
+                cols = np.where(np.any(blue_mask, axis=0))[0]
+                
+                if cols.size == 0:
+                    # --- DETECTION LOST (Finished Fishing or Timeout) ---
+                    current_time = time.time()
+                    
+                    if was_detecting:
+                        # Just finished a cycle
+                        print("Bar gone. Cycle complete.")
+                        self.perform_post_fish_tasks()
+                        
+                        self.cast_line()
+                        time.sleep(self.rod_reset_var.get())
+                        
                         was_detecting = False
-                        
-                        self.fish_catch_counter += 1
-                        
-                        # === HANDLE LOGIC ===
-                        
-                        # 1. Fruit Storage Check
-                        if self.fruit_storage_var.get():
-                            if self.fish_catch_counter % self.fruit_check_loop_var.get() == 0:
-                                self.store_fruit()
-                        
-                        # 2. Auto Buy Check
-                        if self.auto_purchase_var.get():
-                            self.purchase_counter += 1
-                            if self.purchase_counter >= self.loops_var.get():
-                                self.run_auto_purchase()
-                                self.purchase_counter = 0
-
-                        # 3. Auto Craft Check
-                        if self.auto_craft_var.get():
-                            self.craft_counter += 1
-                            if self.craft_counter >= self.craft_loop_var.get():
-                                self.run_auto_craft()
-                                self.craft_counter = 0
-
-                        # 4. Recast
+                        last_detection_time = time.time()
+                    
+                    elif (current_time - last_detection_time) > self.timeout_var.get():
+                        # Timeout
+                        print("Timeout. Resetting...")
+                        self.perform_post_fish_tasks() # Safety check
                         self.cast_line()
                         time.sleep(self.rod_reset_var.get())
                         last_detection_time = time.time()
-                    
-                    # Timeout Logic
-                    if time.time() - last_detection_time > self.timeout_var.get():
-                        print("Timeout. Recasting.")
-                        self.cast_line()
-                        time.sleep(self.rod_reset_var.get())
-                        last_detection_time = time.time()
-                    
+
                     time.sleep(0.1)
                     continue
 
-                # 2. Crop to the "Smart Bar" Area
-                min_x, max_x = valid_cols[0], valid_cols[-1]
-                col_slice = blue_mask[:, min_x:max_x]
-                row_counts = np.sum(col_slice, axis=1)
-                valid_rows = np.where(row_counts > 5)[0]
+                # 3. Find "Real Area" Height (Dark pixels)
+                min_x, max_x = cols[0], cols[-1]
+                crop_width = max_x - min_x
                 
-                if valid_rows.size == 0: continue
+                # Check within the column range for Dark pixels to find Top/Bottom
+                center_x_rel = crop_width // 2
+                real_col = img[:, min_x + center_x_rel, :]
                 
-                min_y, max_y = valid_rows[0], valid_rows[-1]
-                bar_height = max_y - min_y
+                dark_mask_y = (
+                    (real_col[:, 2] == COLOR_DARK[2]) &
+                    (real_col[:, 1] == COLOR_DARK[1]) &
+                    (real_col[:, 0] == COLOR_DARK[0])
+                )
+                rows = np.where(dark_mask_y)[0]
                 
-                crop = img[min_y:max_y, min_x:max_x, :]
+                if rows.size == 0: continue
+                
+                min_y, max_y = rows[0], rows[-1]
+                real_height = max_y - min_y
+                if real_height <= 0: continue
+
+                # 4. Crop to Real Game Area
+                game_area = img[min_y:max_y+1, min_x:max_x+1]
+                
+                # 5. Find White Indicator (Top Y)
+                white_mask = (
+                    (game_area[:,:,2] == COLOR_WHITE[2]) &
+                    (game_area[:,:,1] == COLOR_WHITE[1]) &
+                    (game_area[:,:,0] == COLOR_WHITE[0])
+                )
+                white_rows = np.where(np.any(white_mask, axis=1))[0]
+                
+                if white_rows.size == 0: continue
+                
+                white_top_y = white_rows[0]
+                white_height = white_rows[-1] - white_rows[0]
                 
                 was_detecting = True
                 last_detection_time = time.time()
 
-                # 3. Find Dark Zone (Target)
-                dark_mask = (
-                    (np.abs(crop[:,:,2] - COLOR_SAFE_ZONE_BACKGROUND[0]) < 10) &
-                    (np.abs(crop[:,:,1] - COLOR_SAFE_ZONE_BACKGROUND[1]) < 10) &
-                    (np.abs(crop[:,:,0] - COLOR_SAFE_ZONE_BACKGROUND[2]) < 10)
-                )
-                dark_indices = np.where(np.any(dark_mask, axis=1))[0]
+                # 6. Find Dark Target Zones
+                check_col = game_area[:, crop_width // 2]
                 
-                target_y = bar_height / 2
-                if dark_indices.size > 0:
-                    diffs_d = np.diff(dark_indices)
-                    splits_d = np.where(diffs_d > 5)[0] + 1
-                    sections_d = np.split(dark_indices, splits_d)
-                    longest_d = max(sections_d, key=len)
-                    if len(longest_d) > 0:
-                        target_y = (longest_d[0] + longest_d[-1]) // 2
-
-                # 4. Find White Indicator (WITH STUCK RECOVERY)
-                white_mask = (
-                    (np.abs(crop[:,:,2] - COLOR_MOVING_INDICATOR[0]) < 10) &
-                    (np.abs(crop[:,:,1] - COLOR_MOVING_INDICATOR[1]) < 10) &
-                    (np.abs(crop[:,:,0] - COLOR_MOVING_INDICATOR[2]) < 10)
+                is_dark = (
+                    (check_col[:, 2] == COLOR_DARK[2]) &
+                    (check_col[:, 1] == COLOR_DARK[1]) &
+                    (check_col[:, 0] == COLOR_DARK[0])
                 )
-                white_coords = np.argwhere(white_mask)
+                
+                # Find continuous sections allowing for gaps
+                max_gap = max(3, white_height * 2)
+                
+                dark_sections = []
+                current_start = None
+                gap = 0
+                
+                for r in range(len(is_dark)):
+                    if is_dark[r]:
+                        if current_start is None: current_start = r
+                        gap = 0
+                    else:
+                        if current_start is not None:
+                            gap += 1
+                            if gap > max_gap:
+                                dark_sections.append((current_start, r - gap))
+                                current_start = None
+                                gap = 0
+                
+                if current_start is not None:
+                    dark_sections.append((current_start, len(is_dark) - 1))
+                
+                if not dark_sections: continue
+                
+                # Pick largest section (The Target)
+                largest = max(dark_sections, key=lambda s: s[1] - s[0])
+                target_middle_y = (largest[0] + largest[1]) // 2
 
-                indicator_y = 0
+                # 7. PD Controller
+                raw_error = target_middle_y - white_top_y
+                normalized_error = raw_error / real_height
+                
+                derivative = normalized_error - self.previous_error
+                self.previous_error = normalized_error
+                
+                kp = self.kp_var.get()
+                kd = self.kd_var.get()
+                
+                output = (kp * normalized_error) + (kd * derivative)
 
-                if white_coords.size == 0:
-                    current_time = time.time()
-                    if white_bar_lost_time == 0:
-                        white_bar_lost_time = current_time
-                    
-                    if current_time - white_bar_lost_time > 0.2:
-                        print("Stuck! Attempting recovery...")
-                        if last_known_white_y > (bar_height / 2):
-                            for _ in range(2):
-                                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0,0,0,0)
-                                time.sleep(0.1)
-                                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
-                                time.sleep(0.1)
-                        else:
-                            if self.is_clicking:
-                                win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
-                                self.is_clicking = False
-                        continue
+                if output > 0:
+                    if not self.is_clicking:
+                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0,0,0,0)
+                        self.is_clicking = True
                 else:
-                    white_bar_lost_time = 0
-                    indicator_y = white_coords[:, 0].min()
-                    last_known_white_y = indicator_y
-
-                # 5. PID Control
-                if bar_height == 0: continue
+                    if self.is_clicking:
+                        win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
+                        self.is_clicking = False
                 
-                error = target_y - indicator_y
-                norm_error = error / bar_height
-                
-                derivative = norm_error - self.previous_error
-                self.previous_error = norm_error
-                
-                output = (self.kp_var.get() * norm_error) + (self.kd_var.get() * derivative)
-
-                if output > 0 and not self.is_clicking:
-                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0,0,0,0)
-                    self.is_clicking = True
-                elif output <= 0 and self.is_clicking:
-                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
-                    self.is_clicking = False
                 time.sleep(0.01)
-            except Exception as e:
-                print(f"Error: {e}")
-                time.sleep(1)
 
-        if self.is_clicking:
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
-            self.is_clicking = False
+            except Exception as e:
+                print(f"Loop Error: {e}")
+                time.sleep(1)
 
     def exit_app(self):
         self.main_loop_active = False
